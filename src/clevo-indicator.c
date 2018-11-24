@@ -119,6 +119,8 @@ struct {
 }static menuitems[] = {
         { "Set FAN to AUTO", G_CALLBACK(ui_command_set_fan), 0, AUTO, NULL },
         { "", NULL, 0L, NA, NULL },
+        { "Set FAN to  0%", G_CALLBACK(ui_command_set_fan), 0, MANUAL, NULL },
+        { "Set FAN to  40%", G_CALLBACK(ui_command_set_fan), 40, MANUAL, NULL },
         { "Set FAN to  60%", G_CALLBACK(ui_command_set_fan), 60, MANUAL, NULL },
         { "Set FAN to  70%", G_CALLBACK(ui_command_set_fan), 70, MANUAL, NULL },
         { "Set FAN to  80%", G_CALLBACK(ui_command_set_fan), 80, MANUAL, NULL },
@@ -226,7 +228,7 @@ DO NOT MANIPULATE OR QUERY EC I/O PORTS WHILE THIS PROGRAM IS RUNNING.\n\
             return main_dump_fan();
         } else {
             int val = atoi(argv[1]);
-            if (val < 40 || val > 100)
+            if (val < 0 || val > 100)
                     {
                 printf("invalid fan duty %d!\n", val);
                 return EXIT_FAILURE;
@@ -247,7 +249,7 @@ static void main_init_share(void) {
     share_info->fan_duty = 0;
     share_info->fan_rpms = 0;
     share_info->auto_duty = 1;
-    share_info->auto_duty_val = 0;
+    share_info->auto_duty_val = 60;
     share_info->manual_next_fan_duty = 0;
     share_info->manual_prev_fan_duty = 0;
 }
@@ -298,7 +300,7 @@ static int main_ec_worker(void) {
         // auto EC
         if (share_info->auto_duty == 1) {
             int next_duty = ec_auto_duty_adjust();
-            if (next_duty != 0 && next_duty != share_info->auto_duty_val) {
+            if (next_duty!= -1 && next_duty != share_info->auto_duty_val) {
                 char s_time[256];
                 get_time_string(s_time, 256, "%m/%d %H:%M:%S");
                 printf("%s CPU=%d°C, GPU=%d°C, auto fan duty to %d%%\n", s_time,
@@ -397,7 +399,7 @@ static void ui_command_set_fan(long fan_duty) {
     if (fan_duty_val == 0) {
         printf("clicked on fan duty auto\n");
         share_info->auto_duty = 1;
-        share_info->auto_duty_val = 0;
+        share_info->auto_duty_val = 60;
         share_info->manual_next_fan_duty = 0;
     } else {
         printf("clicked on fan duty: %d\n", fan_duty_val);
@@ -453,15 +455,24 @@ static int ec_auto_duty_adjust(void) {
         return 80;
     if (temp >= 50 && duty < 70)
         return 70;
+    /*if (temp >= 45 && duty < 60)
+        return 60;*/
+
+    if (temp < 50)
+        return 0;
+
+    // this is the case where we don't have to change the duty
+    return -1;
+    /*
     if (temp >= 40 && duty < 60)
         return 60;
     if (temp >= 30 && duty < 50)
-        return 50;
+        return 0;
     if (temp >= 20 && duty < 40)
         return 40;
     if (temp >= 10 && duty < 30)
         return 30;
-    //
+
     if (temp <= 15 && duty > 30)
         return 30;
     if (temp <= 25 && duty > 40)
@@ -476,8 +487,7 @@ static int ec_auto_duty_adjust(void) {
         return 80;
     if (temp <= 75 && duty > 90)
         return 90;
-    //
-    return 0;
+    */
 }
 
 static int ec_query_cpu_temp(void) {
@@ -500,7 +510,7 @@ static int ec_query_fan_rpms(void) {
 }
 
 static int ec_write_fan_duty(int duty_percentage) {
-    if (duty_percentage < 60 || duty_percentage > 100) {
+    if (duty_percentage < 0 || duty_percentage > 100) {
         printf("Wrong fan duty to write: %d\n", duty_percentage);
         return EXIT_FAILURE;
     }
